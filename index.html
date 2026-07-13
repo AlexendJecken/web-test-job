@@ -1,0 +1,716 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cloud Tasks - 跨裝置即時同步</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome 圖示 -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            font-family: 'Inter', sans-serif;
+            background-color: #05070f;
+        }
+
+        #bg-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 0;
+        }
+
+        #app-container {
+            position: relative;
+            z-index: 10;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 1rem;
+        }
+
+        /* 玻璃擬態質感 */
+        .glass-card {
+            background: rgba(10, 15, 30, 0.7);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            box-shadow: 0 30px 60px rgba(0, 0, 0, 0.6), inset 0 1px 1px rgba(255, 255, 255, 0.1);
+        }
+
+        .glass-input {
+            background: rgba(5, 8, 16, 0.6);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.4);
+        }
+
+        .glass-item {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid rgba(255, 255, 255, 0.04);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .glass-item:hover {
+            background: rgba(255, 255, 255, 0.05);
+            border-color: rgba(59, 130, 246, 0.3);
+            transform: translateY(-1px);
+        }
+
+        /* 自訂美化捲軸 */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 99px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.25);
+        }
+    </style>
+</head>
+<body class="text-slate-200 selection:bg-blue-500/30">
+
+    <!-- 動態星雲 Canvas 背景 -->
+    <canvas id="bg-canvas"></canvas>
+
+    <!-- 主應用容器 -->
+    <div id="app-container">
+        
+        <!-- ================= 1. 登入/歡迎首頁 ================= -->
+        <div id="login-view" class="glass-card rounded-[2.5rem] p-8 w-full max-w-sm text-center flex flex-col items-center justify-center min-h-[460px] transition-all duration-500 transform scale-100 opacity-100">
+            <!-- 漸層 Icon 方塊 -->
+            <div class="w-20 h-20 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center shadow-xl shadow-blue-500/20 mb-8 border border-white/10 relative group">
+                <div class="absolute inset-0 bg-blue-500 rounded-2xl filter blur-md opacity-30 group-hover:opacity-50 transition duration-500"></div>
+                <i class="fa-solid fa-list-check text-3xl text-white relative z-10"></i>
+            </div>
+            
+            <h1 class="text-3xl font-extrabold text-white mb-3 tracking-wide drop-shadow-md">Cloud Tasks</h1>
+            <p class="text-slate-400 text-sm mb-10 leading-relaxed max-w-[240px]">跨裝置即時同步，讓效率無所不在</p>
+
+            <button id="btn-login" class="w-full py-4 px-6 rounded-2xl bg-blue-600 hover:bg-blue-500 active:scale-[0.98] text-white font-semibold shadow-lg shadow-blue-600/30 hover:shadow-blue-500/50 transition-all duration-300 flex items-center justify-center gap-2 border border-blue-400/20">
+                <span>立即開始使用</span>
+                <i class="fa-solid fa-wand-magic-sparkles text-sm animate-pulse"></i>
+            </button>
+        </div>
+
+        <!-- ================= 2. 待辦清單主畫面 ================= -->
+        <div id="todo-view" class="absolute hidden glass-card rounded-[2.5rem] p-6 w-full max-w-sm flex-col min-h-[520px] transition-all duration-500 transform scale-95 opacity-0">
+            
+            <!-- 頂部列 -->
+            <div class="flex items-center justify-between mb-6">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center shadow-md border border-white/10">
+                        <i class="fa-solid fa-list-check text-lg text-white"></i>
+                    </div>
+                    <div>
+                        <h2 class="text-lg font-bold text-white leading-tight">我的任務</h2>
+                        <div class="flex items-center gap-1.5 mt-0.5">
+                            <span id="sync-dot" class="w-2 h-2 rounded-full bg-slate-500 inline-block shadow-[0_0_8px_rgba(255,255,255,0.2)]"></span>
+                            <span id="user-status" class="text-[10px] text-slate-400 font-mono tracking-wider uppercase">OFFLINE</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="flex items-center gap-1">
+                    <!-- 設定按鈕 (GitHub 免 Secret 機制) -->
+                    <button id="btn-settings" class="text-slate-400 hover:text-white p-2 rounded-lg hover:bg-white/5 transition" title="雲端同步設定">
+                        <i class="fa-solid fa-gear text-lg"></i>
+                    </button>
+                    <!-- 登出按鈕 -->
+                    <button id="btn-logout" class="text-slate-400 hover:text-white p-2 rounded-lg hover:bg-white/5 transition" title="登出">
+                        <i class="fa-solid fa-arrow-right-from-bracket text-lg"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- 今日完成率卡片 -->
+            <div class="glass-input rounded-2xl p-4 mb-5 flex items-center justify-between relative overflow-hidden">
+                <div class="absolute inset-0 bg-gradient-to-r from-blue-600/10 to-transparent w-0 transition-all duration-1000 ease-out" id="progress-bg"></div>
+                <div class="relative z-10">
+                    <p class="text-xs text-slate-400 mb-1">今日完成率</p>
+                    <p id="completion-rate" class="text-3xl font-extrabold text-white">0%</p>
+                </div>
+                <div class="relative z-10 text-slate-700">
+                    <i id="trophy-icon" class="fa-solid fa-trophy text-3xl transition-colors duration-500"></i>
+                </div>
+            </div>
+
+            <!-- 新增任務輸入框 -->
+            <form id="todo-form" class="flex gap-2 mb-6 relative z-10">
+                <input 
+                    type="text" 
+                    id="todo-input" 
+                    placeholder="輸入新任務..." 
+                    required
+                    autocomplete="off"
+                    class="flex-1 glass-input rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/30 transition"
+                >
+                <button type="submit" class="w-12 h-12 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-medium shadow-lg shadow-blue-600/20 active:scale-95 transition flex items-center justify-center shrink-0 border border-blue-400/20">
+                    <i class="fa-solid fa-plus text-lg"></i>
+                </button>
+            </form>
+
+            <!-- 任務清單與空狀態 -->
+            <div class="flex-1 flex flex-col min-h-0 justify-center">
+                <!-- 空狀態 -->
+                <div id="empty-state" class="flex flex-col items-center justify-center py-8 text-center">
+                    <div class="w-16 h-16 rounded-full glass-input flex items-center justify-center mb-4 border border-white/5 animate-pulse">
+                        <i class="fa-solid fa-wand-magic-sparkles text-xl text-blue-400/70"></i>
+                    </div>
+                    <p class="text-slate-400 text-sm tracking-wide">萬事俱備，只欠任務！</p>
+                </div>
+
+                <!-- 任務列表 -->
+                <ul id="todo-list" class="space-y-2.5 overflow-y-auto pr-1 hidden flex-1 pb-2">
+                    <!-- 動態渲染 -->
+                </ul>
+            </div>
+        </div>
+
+        <!-- ================= 3. Firebase 設定彈窗 ================= -->
+        <div id="settings-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm hidden opacity-0 transition-opacity duration-300">
+            <div class="glass-card rounded-3xl p-6 w-full max-w-sm transform scale-95 transition-transform duration-300">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-lg font-bold text-white flex items-center gap-2">
+                        <i class="fa-solid fa-cloud text-blue-400"></i>
+                        <span>雲端同步金鑰設定</span>
+                    </h3>
+                    <button id="btn-close-settings" class="text-slate-400 hover:text-white">
+                        <i class="fa-solid fa-xmark text-lg"></i>
+                    </button>
+                </div>
+                <p class="text-xs text-slate-400 mb-4 leading-relaxed">
+                    為了避免將您的 Firebase 隱私金鑰公開在 GitHub 儲存庫，請將您的 Firebase 配置貼在下方。設定將安全保存在本地瀏覽器。
+                </p>
+                <textarea 
+                    id="firebase-config-input" 
+                    placeholder='{"apiKey": "...", "authDomain": "...", "projectId": "...", "databaseURL": "..."}'
+                    class="w-full h-36 glass-input rounded-xl p-3 text-xs text-slate-300 focus:outline-none focus:border-blue-500/50 font-mono mb-4 placeholder:text-slate-600"
+                ></textarea>
+                <div class="flex gap-2">
+                    <button id="btn-save-settings" class="flex-1 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-sm font-semibold transition active:scale-[0.98]">
+                        儲存並連接
+                    </button>
+                    <button id="btn-clear-settings" class="py-2.5 px-4 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-sm font-semibold transition">
+                        清除
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 訊息通知 -->
+    <div id="toast" class="fixed bottom-6 left-1/2 transform -translate-x-1/2 bg-slate-950/80 border border-white/10 text-white px-5 py-3 rounded-2xl shadow-2xl opacity-0 pointer-events-none transition-all duration-300 z-50 flex items-center gap-2 text-sm backdrop-blur-md">
+        <i class="fa-solid fa-circle-info text-blue-400"></i>
+        <span id="toast-text">提示訊息</span>
+    </div>
+
+    <script>
+        // --- Canvas 動態背景星空系統 ---
+        const canvas = document.getElementById('bg-canvas');
+        const ctx = canvas.getContext('2d');
+        let width, height;
+        let stars = [];
+        const mouse = { x: null, y: null, radius: 120 };
+
+        function initCanvas() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            stars = [];
+            const count = Math.min(Math.floor(width * height / 9000), 120);
+            for (let i = 0; i < count; i++) {
+                stars.push({
+                    x: Math.random() * width,
+                    y: Math.random() * height,
+                    vx: (Math.random() - 0.5) * 0.2,
+                    vy: (Math.random() - 0.5) * 0.2,
+                    radius: Math.random() * 1.5 + 0.3,
+                    alpha: Math.random() * 0.6 + 0.2,
+                    pulseSpeed: Math.random() * 0.02 + 0.005,
+                    pulseDir: Math.random() > 0.5 ? 1 : -1
+                });
+            }
+        }
+
+        window.addEventListener('resize', initCanvas);
+        window.addEventListener('mousemove', (e) => {
+            mouse.x = e.clientX;
+            mouse.y = e.clientY;
+        });
+        window.addEventListener('mouseleave', () => {
+            mouse.x = null;
+            mouse.y = null;
+        });
+
+        function animate() {
+            // 背景漸層：深藍 (#040814) 到黑 (#010205)
+            const gradient = ctx.createLinearGradient(0, 0, 0, height);
+            gradient.addColorStop(0, '#040814');
+            gradient.addColorStop(0.5, '#020308');
+            gradient.addColorStop(1, '#000000');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, width, height);
+
+            // 繪製與更新星體
+            stars.forEach((star) => {
+                star.x += star.vx;
+                star.y += star.vy;
+
+                // 邊界穿梭
+                if (star.x < 0) star.x = width;
+                if (star.x > width) star.x = 0;
+                if (star.y < 0) star.y = height;
+                if (star.y > height) star.y = 0;
+
+                // 呼吸燈效果
+                star.alpha += star.pulseSpeed * star.pulseDir;
+                if (star.alpha > 0.8 || star.alpha < 0.2) {
+                    star.pulseDir *= -1;
+                }
+
+                // 滑鼠交互吸引
+                if (mouse.x !== null && mouse.y !== null) {
+                    const dx = mouse.x - star.x;
+                    const dy = mouse.y - star.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    if (dist < mouse.radius) {
+                        const force = (mouse.radius - dist) / mouse.radius;
+                        star.x -= dx * force * 0.02;
+                        star.y -= dy * force * 0.02;
+                    }
+                }
+
+                ctx.beginPath();
+                ctx.arc(star.x, star.y, star.radius, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(147, 197, 253, ${star.alpha})`;
+                ctx.fill();
+            });
+
+            // 繪製微弱連線
+            for (let i = 0; i < stars.length; i++) {
+                for (let j = i + 1; j < stars.length; j++) {
+                    const dx = stars[i].x - stars[j].x;
+                    const dy = stars[i].y - stars[j].y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+
+                    if (dist < 100) {
+                        ctx.beginPath();
+                        ctx.strokeStyle = `rgba(59, 130, 246, ${0.12 * (1 - dist / 100)})`;
+                        ctx.lineWidth = 0.5;
+                        ctx.moveTo(stars[i].x, stars[i].y);
+                        ctx.lineTo(stars[j].x, stars[j].y);
+                        ctx.stroke();
+                    }
+                }
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        initCanvas();
+        animate();
+    </script>
+
+    <!-- 整合 Firebase 模組 -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, getDocs, collection, query, deleteDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // DOM Elements
+        const loginView = document.getElementById('login-view');
+        const todoView = document.getElementById('todo-view');
+        const btnLogin = document.getElementById('btn-login');
+        const btnLogout = document.getElementById('btn-logout');
+        const btnSettings = document.getElementById('btn-settings');
+        const btnCloseSettings = document.getElementById('btn-close-settings');
+        const btnSaveSettings = document.getElementById('btn-save-settings');
+        const btnClearSettings = document.getElementById('btn-clear-settings');
+        const settingsModal = document.getElementById('settings-modal');
+        const firebaseConfigInput = document.getElementById('firebase-config-input');
+        
+        const todoForm = document.getElementById('todo-form');
+        const todoInput = document.getElementById('todo-input');
+        const todoList = document.getElementById('todo-list');
+        const emptyState = document.getElementById('empty-state');
+        const completionRate = document.getElementById('completion-rate');
+        const progressBg = document.getElementById('progress-bg');
+        const trophyIcon = document.getElementById('trophy-icon');
+        const userStatus = document.getElementById('user-status');
+        const syncDot = document.getElementById('sync-dot');
+        const toast = document.getElementById('toast');
+        const toastText = document.getElementById('toast-text');
+
+        // State variables
+        let isFirebaseActive = false;
+        let firebaseApp = null;
+        let db = null;
+        let auth = null;
+        let currentUser = null;
+        let localTasks = []; // 離線狀態
+        let unsubscribeFirestore = null;
+
+        const appId = 'cloud-tasks-github';
+
+        // --- 提示通知元件 ---
+        function showToast(msg, isSuccess = true) {
+            toastText.textContent = msg;
+            const icon = toast.querySelector('i');
+            if (isSuccess) {
+                icon.className = 'fa-solid fa-circle-check text-emerald-400';
+            } else {
+                icon.className = 'fa-solid fa-circle-exclamation text-rose-400';
+            }
+            toast.classList.remove('opacity-0', 'pointer-events-none');
+            toast.classList.add('opacity-100');
+            setTimeout(() => {
+                toast.classList.remove('opacity-100');
+                toast.classList.add('opacity-0', 'pointer-events-none');
+            }, 3000);
+        }
+
+        // --- 安全 XSS 過濾 ---
+        function escapeHtml(str) {
+            const div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
+        }
+
+        // --- 轉場動畫控制 ---
+        function switchView(fromView, toView) {
+            fromView.classList.remove('scale-100', 'opacity-100');
+            fromView.classList.add('scale-95', 'opacity-0');
+            setTimeout(() => {
+                fromView.classList.add('hidden');
+                toView.classList.remove('hidden');
+                // 強制重繪以驅動 CSS 轉場
+                void toView.offsetWidth;
+                toView.classList.remove('scale-95', 'opacity-0');
+                toView.classList.add('scale-100', 'opacity-100');
+            }, 300);
+        }
+
+        // --- 初始化 Firebase 設定 ---
+        function loadSavedFirebaseConfig() {
+            const saved = localStorage.getItem('tasks_firebase_config');
+            if (saved) {
+                try {
+                    const config = JSON.parse(saved);
+                    initFirebase(config);
+                    firebaseConfigInput.value = saved;
+                    return true;
+                } catch (e) {
+                    localStorage.removeItem('tasks_firebase_config');
+                }
+            }
+            return false;
+        }
+
+        async function initFirebase(config) {
+            try {
+                if (unsubscribeFirestore) {
+                    unsubscribeFirestore();
+                    unsubscribeFirestore = null;
+                }
+                firebaseApp = initializeApp(config);
+                auth = getAuth(firebaseApp);
+                db = getFirestore(firebaseApp);
+                isFirebaseActive = true;
+
+                // 註冊狀態監聽
+                onAuthStateChanged(auth, async (user) => {
+                    if (user) {
+                        currentUser = user;
+                        userStatus.textContent = `CLOUD: ${user.uid.substring(0, 8)}...`;
+                        syncDot.className = 'w-2 h-2 rounded-full bg-emerald-400 inline-block shadow-[0_0_8px_#34d399]';
+                        bindCloudSync();
+                    } else {
+                        currentUser = null;
+                        await signInAnonymously(auth);
+                    }
+                });
+                showToast('已成功連線雲端資料庫！');
+            } catch (err) {
+                console.error(err);
+                showToast('連線失敗，請檢查配置金鑰是否正確。', false);
+                fallbackToOffline();
+            }
+        }
+
+        function fallbackToOffline() {
+            isFirebaseActive = false;
+            currentUser = null;
+            userStatus.textContent = 'OFFLINE (IN-MEMORY)';
+            syncDot.className = 'w-2 h-2 rounded-full bg-amber-400 inline-block shadow-[0_0_8px_#fbbf24]';
+            renderTasks();
+        }
+
+        // --- 離線狀態 CRUD ---
+        function handleOfflineAction(action, data) {
+            if (action === 'ADD') {
+                localTasks.unshift(data);
+            } else if (action === 'TOGGLE') {
+                const task = localTasks.find(t => t.id === data);
+                if (task) task.completed = !task.completed;
+            } else if (action === 'DELETE') {
+                localTasks = localTasks.filter(t => t.id !== data);
+            }
+            renderTasks();
+            // 保存至離線 localStorage（防止重新整理遺失）
+            localStorage.setItem('tasks_offline_data', JSON.stringify(localTasks));
+        }
+
+        // --- STREAMING_CHUNK: Firestore Cloud Realtime Synchronization ---
+        // 雲端即時同步
+        function bindCloudSync() {
+            if (!isFirebaseActive || !currentUser) return;
+            
+            // 遵從 RULE 1：嚴格的路徑格式
+            const path = `artifacts/${appId}/users/${currentUser.uid}/tasks`;
+            const q = collection(db, path);
+
+            // 實作安全即時監聽與錯誤處理
+            unsubscribeFirestore = onSnapshot(q, (snapshot) => {
+                const tasks = [];
+                snapshot.forEach((doc) => {
+                    tasks.push({ id: doc.id, ...doc.data() });
+                });
+                // 排序 (Firestore 無法做複雜排序，改於記憶體端排序)
+                tasks.sort((a, b) => b.createdAt - a.createdAt);
+                
+                localTasks = tasks;
+                renderTasks();
+            }, (error) => {
+                console.error("Firestore sync error:", error);
+                showToast("同步錯誤，已自動切回單機模式", false);
+                fallbackToOffline();
+            });
+        }
+
+        // 寫入 / 更新 雲端資料 (遵從 RULE 3: 先 Auth 後操作)
+        async function syncToCloud(id, taskData) {
+            if (!isFirebaseActive || !currentUser) return;
+            try {
+                const docRef = doc(db, `artifacts/${appId}/users/${currentUser.uid}/tasks`, id);
+                await setDoc(docRef, taskData, { merge: true });
+            } catch (err) {
+                console.error("Cloud write failed:", err);
+                showToast("雲端儲存失敗", false);
+            }
+        }
+
+        async function deleteFromCloud(id) {
+            if (!isFirebaseActive || !currentUser) return;
+            try {
+                const docRef = doc(db, `artifacts/${appId}/users/${currentUser.uid}/tasks`, id);
+                await deleteDoc(docRef);
+            } catch (err) {
+                console.error("Cloud delete failed:", err);
+            }
+        }
+
+        // --- 渲染 UI 待辦事項 (同 image_f04fd2.png 樣式) ---
+        function renderTasks() {
+            todoList.innerHTML = '';
+            
+            if (localTasks.length === 0) {
+                emptyState.classList.remove('hidden');
+                todoList.classList.add('hidden');
+                updateProgress(0, 0);
+                return;
+            }
+
+            emptyState.classList.add('hidden');
+            todoList.classList.remove('hidden');
+
+            let completedCount = 0;
+
+            localTasks.forEach(task => {
+                if (task.completed) completedCount++;
+
+                const li = document.createElement('li');
+                li.className = `glass-item px-4 py-3.5 rounded-2xl flex items-center justify-between group ${task.completed ? 'opacity-50' : ''}`;
+                
+                li.innerHTML = `
+                    <div class="flex items-center gap-3 cursor-pointer flex-1 toggle-btn" data-id="${task.id}">
+                        <div class="w-5.5 h-5.5 rounded-full border flex items-center justify-center transition-all ${task.completed ? 'bg-blue-600 border-blue-600' : 'border-slate-500 group-hover:border-blue-400'}">
+                            <i class="fa-solid fa-check text-[10px] text-white transition-opacity ${task.completed ? 'opacity-100' : 'opacity-0'}"></i>
+                        </div>
+                        <span class="text-sm transition-all duration-300 tracking-wide ${task.completed ? 'line-through text-slate-500' : 'text-slate-200 group-hover:text-white'}">
+                            ${escapeHtml(task.text)}
+                        </span>
+                    </div>
+                    <button class="delete-btn text-slate-500 hover:text-rose-400 p-1.5 rounded-lg hover:bg-rose-500/10 transition opacity-0 group-hover:opacity-100 focus:opacity-100" data-id="${task.id}">
+                        <i class="fa-regular fa-trash-can text-sm"></i>
+                    </button>
+                `;
+                todoList.appendChild(li);
+            });
+
+            updateProgress(completedCount, localTasks.length);
+
+            // 綁定動態事件
+            document.querySelectorAll('.toggle-btn').forEach(btn => {
+                btn.addEventListener('click', async () => {
+                    const id = btn.dataset.id;
+                    const task = localTasks.find(t => t.id === id);
+                    if (!task) return;
+                    
+                    const newCompleted = !task.completed;
+                    if (isFirebaseActive) {
+                        await syncToCloud(id, { completed: newCompleted });
+                    } else {
+                        handleOfflineAction('TOGGLE', id);
+                    }
+                });
+            });
+
+            document.querySelectorAll('.delete-btn').forEach(btn => {
+                btn.addEventListener('click', async (e) => {
+                    e.stopPropagation();
+                    const id = btn.dataset.id;
+                    if (isFirebaseActive) {
+                        await deleteFromCloud(id);
+                    } else {
+                        handleOfflineAction('DELETE', id);
+                    }
+                });
+            });
+        }
+
+        // 今日進度條更新
+        function updateProgress(completed, total) {
+            const rate = total > 0 ? Math.round((completed / total) * 100) : 0;
+            completionRate.textContent = `${rate}%`;
+            progressBg.style.width = `${rate}%`;
+
+            if (rate === 100 && total > 0) {
+                trophyIcon.className = 'fa-solid fa-trophy text-3xl text-amber-400 transition-colors duration-500 drop-shadow-[0_0_12px_rgba(251,191,36,0.4)]';
+                completionRate.className = 'text-3xl font-extrabold text-amber-400 transition-colors duration-500';
+            } else {
+                trophyIcon.className = 'fa-solid fa-trophy text-3xl text-slate-700 transition-colors duration-500';
+                completionRate.className = 'text-3xl font-extrabold text-white transition-colors duration-500';
+            }
+        }
+
+        // --- 互動事件綁定 ---
+
+        // 歡迎頁 -> 主畫面
+        btnLogin.addEventListener('click', () => {
+            const btnIcon = btnLogin.querySelector('i');
+            btnIcon.className = 'fa-solid fa-spinner fa-spin text-sm';
+            
+            setTimeout(() => {
+                // 如果本地有 config 則初始化
+                const hasConfig = loadSavedFirebaseConfig();
+                if (!hasConfig) {
+                    // 否則進入純單機 offline 模式
+                    const savedTasks = localStorage.getItem('tasks_offline_data');
+                    localTasks = savedTasks ? JSON.parse(savedTasks) : [];
+                    fallbackToOffline();
+                }
+                
+                switchView(loginView, todoView);
+                showToast('已進入任務空間');
+                btnIcon.className = 'fa-solid fa-wand-magic-sparkles text-sm';
+            }, 800);
+        });
+
+        // 登出
+        btnLogout.addEventListener('click', () => {
+            if (isFirebaseActive && auth) {
+                signOut(auth).then(() => {
+                    if (unsubscribeFirestore) unsubscribeFirestore();
+                    fallbackToOffline();
+                });
+            }
+            switchView(todoView, loginView);
+            showToast('已登出');
+        });
+
+        // 新增事項
+        todoForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const text = todoInput.value.trim();
+            if (!text) return;
+
+            const newId = Date.now().toString();
+            const newTask = {
+                text: text,
+                completed: false,
+                createdAt: Date.now()
+            };
+
+            if (isFirebaseActive) {
+                await syncToCloud(newId, newTask);
+            } else {
+                handleOfflineAction('ADD', newTask);
+            }
+
+            todoInput.value = '';
+            todoInput.focus();
+        });
+
+        // 設定控制項
+        btnSettings.addEventListener('click', () => {
+            settingsModal.classList.remove('hidden');
+            void settingsModal.offsetWidth;
+            settingsModal.classList.remove('opacity-0');
+            settingsModal.querySelector('div').classList.remove('scale-95');
+            settingsModal.querySelector('div').classList.add('scale-100');
+        });
+
+        function closeSettings() {
+            settingsModal.classList.add('opacity-0');
+            settingsModal.querySelector('div').classList.remove('scale-100');
+            settingsModal.querySelector('div').classList.add('scale-95');
+            setTimeout(() => {
+                settingsModal.classList.add('hidden');
+            }, 300);
+        }
+
+        btnCloseSettings.addEventListener('click', closeSettings);
+
+        // 儲存金鑰配置
+        btnSaveSettings.addEventListener('click', () => {
+            const configStr = firebaseConfigInput.value.trim();
+            if (!configStr) {
+                showToast('請輸入配置內容', false);
+                return;
+            }
+            try {
+                const config = JSON.parse(configStr);
+                localStorage.setItem('tasks_firebase_config', JSON.stringify(config));
+                initFirebase(config);
+                closeSettings();
+            } catch (err) {
+                showToast('JSON 格式錯誤，請重新確認格式。', false);
+            }
+        });
+
+        // 清除金鑰配置
+        btnClearSettings.addEventListener('click', () => {
+            localStorage.removeItem('tasks_firebase_config');
+            firebaseConfigInput.value = '';
+            closeSettings();
+            showToast('配置已清除，切換回單機模式');
+            fallbackToOffline();
+        });
+    </script>
+</body>
+</html>
