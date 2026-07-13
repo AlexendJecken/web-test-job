@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cloud Tasks - Canvas Edition</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden; /* 防止背景滾動 */
+            font-family: 'Inter', sans-serif;
+            background-color: #000;
+        }
+
+        /* 讓 Canvas 填滿背景 */
+        #bg-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 0;
+        }
+
+        /* 確保 UI 在 Canvas 之上 */
+        #app-container {
+            position: relative;
+            z-index: 10;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 1rem;
+        }
+
+        /* 增強版玻璃擬態，讓 Canvas 背景透出來 */
+        .glass-card {
+            background: rgba(13, 17, 33, 0.45);
+            backdrop-filter: blur(24px);
+            -webkit-backdrop-filter: blur(24px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 30px 60px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+        }
+
+        .glass-input {
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.2);
+        }
+
+        .glass-item {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        /* 自訂捲軸樣式 */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.1); border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.2); }
+    </style>
+</head>
+<body class="text-slate-200">
+
+    <canvas id="bg-canvas"></canvas>
+
+    <div id="app-container">
+        
+        <!-- ================= 1. 登入/首頁視圖 ================= -->
+        <div id="login-view" class="glass-card rounded-[2rem] p-8 w-full max-w-sm text-center flex flex-col items-center justify-center min-h-[460px] transition-all duration-500 transform scale-100 opacity-100">
+            <div class="w-20 h-20 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-800 flex items-center justify-center shadow-lg shadow-blue-900/50 mb-8 border border-white/10">
+                <i class="fa-solid fa-list-check text-3xl text-white"></i>
+            </div>
+            
+            <h1 class="text-3xl font-extrabold text-white mb-3 tracking-wide drop-shadow-md">Cloud Tasks</h1>
+            <p class="text-slate-400 text-sm mb-10 leading-relaxed">跨裝置即時同步，讓效率無所不在</p>
+
+            <button id="btn-login" class="w-full py-3.5 px-6 rounded-xl bg-blue-600/90 hover:bg-blue-500 active:scale-[0.98] text-white font-medium shadow-[0_0_20px_rgba(37,99,235,0.4)] hover:shadow-[0_0_30px_rgba(37,99,235,0.6)] transition-all duration-300 flex items-center justify-center gap-2 border border-blue-400/30">
+                <span>立即開始使用</span>
+                <i class="fa-solid fa-wand-magic-sparkles text-sm"></i>
+            </button>
+        </div>
+
+        <!-- ================= 2. 待辦事項清單視圖 ================= -->
+        <div id="todo-view" class="absolute hidden glass-card rounded-[2rem] p-6 w-full max-w-sm flex-col min-h-[520px] transition-all duration-500 transform scale-95 opacity-0">
+            
+            <!-- Header -->
+            <div class="flex items-center justify-between mb-6">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-800 flex items-center justify-center shadow-md border border-white/10">
+                        <i class="fa-solid fa-list-check text-lg text-white"></i>
+                    </div>
+                    <div>
+                        <h2 class="text-lg font-bold text-white leading-tight">我的任務</h2>
+                        <div class="flex items-center gap-1.5 mt-0.5">
+                            <span class="w-2 h-2 rounded-full bg-emerald-400 inline-block shadow-[0_0_8px_#34d399]"></span>
+                            <span id="user-status" class="text-[10px] text-slate-300 font-mono tracking-wider uppercase">SYNCED: IN-MEMORY</span>
+                        </div>
+                    </div>
+                </div>
+                <button id="btn-logout" class="text-slate-400 hover:text-white p-2 rounded-lg hover:bg-white/10 transition duration-200">
+                    <i class="fa-solid fa-arrow-right-from-bracket text-lg"></i>
+                </button>
+            </div>
+
+            <!-- 今日完成率卡片 -->
+            <div class="glass-input rounded-2xl p-4 mb-5 flex items-center justify-between relative overflow-hidden group">
+                <div class="absolute inset-0 bg-gradient-to-r from-blue-600/20 to-transparent w-0 transition-all duration-700 ease-out" id="progress-bg"></div>
+                <div class="relative z-10">
+                    <p class="text-xs text-slate-400 mb-1">今日完成率</p>
+                    <p id="completion-rate" class="text-3xl font-extrabold text-white drop-shadow-sm">0%</p>
+                </div>
+                <div class="relative z-10 text-slate-600 group-hover:text-amber-400/50 transition-colors duration-500">
+                    <i class="fa-solid fa-trophy text-4xl opacity-50"></i>
+                </div>
+            </div>
+
+            <!-- 輸入欄位 -->
+            <form id="todo-form" class="flex gap-2 mb-6 relative z-10">
+                <input 
+                    type="text" 
+                    id="todo-input" 
+                    placeholder="輸入新任務..." 
+                    required
+                    class="flex-1 glass-input rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500/70 focus:ring-1 focus:ring-blue-500/50 transition"
+                >
+                <button type="submit" class="w-12 h-12 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-medium shadow-[0_0_15px_rgba(37,99,235,0.3)] active:scale-95 transition flex items-center justify-center shrink-0 border border-blue-400/30">
+                    <i class="fa-solid fa-plus text-lg"></i>
+                </button>
+            </form>
+
+            <!-- 任務清單容器 -->
+            <div class="flex-1 flex flex-col min-h-0">
+                <div id="empty-state" class="flex-1 flex flex-col items-center justify-center py-8 text-center transition-opacity duration-300">
+                    <div class="w-16 h-16 rounded-full glass-input flex items-center justify-center mb-4">
+                        <i class="fa-solid fa-meteor text-2xl text-blue-400/70"></i>
+                    </div>
+                    <p class="text-slate-400 text-sm">宇宙靜悄悄，只欠你的任務！</p>
+                </div>
+
+                <ul id="todo-list" class="space-y-2.5 overflow-y-auto pr-1 hidden flex-1 pb-2">
+                    <!-- 動態插入 -->
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <!-- 訊息提示框 (代替 alert) -->
+    <div id="toast-message" class="fixed bottom-5 left-1/2 transform -translate-x-1/2 bg-slate-800 text-white px-6 py-3 rounded-full shadow-2xl opacity-0 pointer-events-none transition-opacity duration-300 z-50 border border-slate-700 flex items-center gap-3">
+        <i class="fa-solid fa-circle-info text-blue-400"></i>
+        <span id="toast-text" class="text-sm"></span>
+    </div>
+
+    <script>
+        // --- 1. Canvas 背景動畫設定 ---
+        const canvas = document.getElementById('bg-canvas');
+        const ctx = canvas.getContext('2d');
+        let width, height;
+        let particles = [];
+
+        // 調整 Canvas 尺寸
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        // 粒子類別 (星光/科技感節點)
+        class Particle {
+            constructor() {
+                this.x = Math.random() * width;
+                this.y = Math.random() * height;
+                this.vx = (Math.random() - 0.5) * 0.5; // 緩慢移動
+                this.vy = (Math.random() - 0.5) * 0.5;
+                this.radius = Math.random() * 1.5 + 0.5;
+                this.baseAlpha = Math.random() * 0.5 + 0.1;
+            }
+
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+
+                // 邊界反彈
+                if (this.x < 0 || this.x > width) this.vx *= -1;
+                if (this.y < 0 || this.y > height) this.vy *= -1;
+            }
+
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(100, 150, 255, ${this.baseAlpha})`; // 偏藍星光
+                ctx.fill();
+            }
+        }
+
+        // 初始化粒子
+        const particleCount = Math.min(window.innerWidth / 10, 150); // 依螢幕寬度決定數量
+        for (let i = 0; i < particleCount; i++) {
+            particles.push(new Particle());
+        }
+
+        // 動畫循環
+        function animateCanvas() {
+            // 深藍到黑的漸層背景 (由上至下)
+            const gradient = ctx.createLinearGradient(0, 0, 0, height);
+            gradient.addColorStop(0, '#020617'); // 極深藍 (幾乎黑)
+            gradient.addColorStop(0.5, '#050c24'); // 深藏青色
+            gradient.addColorStop(1, '#000000'); // 純黑
+
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, width, height);
+
+            // 繪製粒子與連線
+            for (let i = 0; i < particles.length; i++) {
+                particles[i].update();
+                particles[i].draw();
+
+                // 繪製粒子之間的微光連線
+                for (let j = i + 1; j < particles.length; j++) {
+                    const dx = particles[i].x - particles[j].x;
+                    const dy = particles[i].y - particles[j].y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+
+                    if (distance < 120) {
+                        ctx.beginPath();
+                        ctx.strokeStyle = `rgba(59, 130, 246, ${0.15 - distance / 120 * 0.15})`; // Tailwind blue-500
+                        ctx.lineWidth = 0.5;
+                        ctx.moveTo(particles[i].x, particles[i].y);
+                        ctx.lineTo(particles[j].x, particles[j].y);
+                        ctx.stroke();
+                    }
+                }
+            }
+            requestAnimationFrame(animateCanvas);
+        }
+        animateCanvas();
+
+        // --- 2. 應用程式邏輯 (In-Memory State) ---
+        const loginView = document.getElementById('login-view');
+        const todoView = document.getElementById('todo-view');
+        const btnLogin = document.getElementById('btn-login');
+        const btnLogout = document.getElementById('btn-logout');
+        const todoForm = document.getElementById('todo-form');
+        const todoInput = document.getElementById('todo-input');
+        const todoList = document.getElementById('todo-list');
+        const emptyState = document.getElementById('empty-state');
+        const completionRate = document.getElementById('completion-rate');
+        const progressBg = document.getElementById('progress-bg');
+        const toastMessage = document.getElementById('toast-message');
+        const toastText = document.getElementById('toast-text');
+
+        // 狀態變數
+        let currentUser = null;
+        let tasks = [];
+
+        // 顯示訊息框
+        function showToast(message) {
+            toastText.textContent = message;
+            toastMessage.classList.remove('opacity-0');
+            setTimeout(() => toastMessage.classList.add('opacity-0'), 2500);
+        }
+
+        // 安全字串轉換
+        function escapeHtml(str) {
+            const div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
+        }
+
+        // 切換畫面
+        function toggleView(isLoggedIn) {
+            if (isLoggedIn) {
+                loginView.classList.remove('scale-100', 'opacity-100');
+                loginView.classList.add('scale-95', 'opacity-0', 'pointer-events-none');
+                
+                setTimeout(() => {
+                    loginView.classList.add('hidden');
+                    todoView.classList.remove('hidden');
+                    // 強制重繪
+                    void todoView.offsetWidth;
+                    todoView.classList.remove('scale-95', 'opacity-0');
+                    todoView.classList.add('scale-100', 'opacity-100');
+                }, 300); // 等待淡出動畫
+            } else {
+                todoView.classList.remove('scale-100', 'opacity-100');
+                todoView.classList.add('scale-95', 'opacity-0');
+                
+                setTimeout(() => {
+                    todoView.classList.add('hidden');
+                    loginView.classList.remove('hidden');
+                    void loginView.offsetWidth;
+                    loginView.classList.remove('scale-95', 'opacity-0', 'pointer-events-none');
+                    loginView.classList.add('scale-100', 'opacity-100');
+                }, 300);
+            }
+        }
+
+        // 登入/登出事件
+        btnLogin.addEventListener('click', () => {
+            // 模擬登入過程
+            const btnIcon = btnLogin.querySelector('i');
+            btnIcon.className = 'fa-solid fa-spinner fa-spin text-sm';
+            
+            setTimeout(() => {
+                currentUser = { uid: 'user_' + Math.random().toString(36).substr(2, 6) };
+                tasks = []; // 重置任務
+                renderTodos();
+                toggleView(true);
+                showToast('已進入個人空間');
+                btnIcon.className = 'fa-solid fa-wand-magic-sparkles text-sm'; // 恢復圖示
+            }, 800);
+        });
+
+        btnLogout.addEventListener('click', () => {
+            currentUser = null;
+            toggleView(false);
+            showToast('已登出');
+        });
+
+        // 新增任務
+        todoForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const text = todoInput.value.trim();
+            if (!text) return;
+
+            tasks.unshift({
+                id: Date.now().toString(),
+                text: text,
+                completed: false
+            });
+
+            todoInput.value = '';
+            renderTodos();
+        });
+
+        // 渲染任務清單
+        function renderTodos() {
+            todoList.innerHTML = '';
+            
+            if (tasks.length === 0) {
+                emptyState.classList.remove('hidden');
+                todoList.classList.add('hidden');
+                updateProgress(0, 0);
+                return;
+            }
+
+            emptyState.classList.add('hidden');
+            todoList.classList.remove('hidden');
+            todoList.classList.add('flex');
+
+            let completedCount = 0;
+
+            tasks.forEach(task => {
+                if (task.completed) completedCount++;
+
+                const li = document.createElement('li');
+                li.className = `glass-item px-4 py-3.5 rounded-xl transition-all duration-300 flex items-center justify-between group hover:bg-white/5 ${task.completed ? 'opacity-60' : ''}`;
+                
+                li.innerHTML = `
+                    <div class="flex items-center gap-3 cursor-pointer flex-1 toggle-btn" data-id="${task.id}">
+                        <div class="w-5 h-5 rounded-full border flex items-center justify-center transition-colors ${task.completed ? 'bg-blue-500 border-blue-500' : 'border-slate-500 group-hover:border-blue-400'}">
+                            <i class="fa-solid fa-check text-xs text-white ${task.completed ? 'opacity-100' : 'opacity-0'}"></i>
+                        </div>
+                        <span class="text-sm transition-all duration-300 ${task.completed ? 'line-through text-slate-500' : 'text-slate-200 group-hover:text-white'}">
+                            ${escapeHtml(task.text)}
+                        </span>
+                    </div>
+                    <button class="delete-btn text-slate-500 hover:text-rose-400 p-1.5 rounded-md hover:bg-rose-500/10 transition opacity-0 group-hover:opacity-100 focus:opacity-100" data-id="${task.id}">
+                        <i class="fa-regular fa-trash-can text-sm"></i>
+                    </button>
+                `;
+                todoList.appendChild(li);
+            });
+
+            updateProgress(completedCount, tasks.length);
+
+            // 綁定事件
+            document.querySelectorAll('.toggle-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const id = btn.dataset.id;
+                    const task = tasks.find(t => t.id === id);
+                    if (task) {
+                        task.completed = !task.completed;
+                        renderTodos();
+                    }
+                });
+            });
+
+            document.querySelectorAll('.delete-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const id = e.currentTarget.dataset.id;
+                    tasks = tasks.filter(t => t.id !== id);
+                    renderTodos();
+                });
+            });
+        }
+
+        // 更新進度條與百分比
+        function updateProgress(completed, total) {
+            const rate = total > 0 ? Math.round((completed / total) * 100) : 0;
+            
+            // 數字動畫 (簡單版)
+            completionRate.textContent = `${rate}%`;
+            
+            // 背景進度條動畫
+            progressBg.style.width = `${rate}%`;
+            
+            // 完成 100% 時的效果
+            if (rate === 100 && total > 0) {
+                completionRate.classList.add('text-amber-400');
+                completionRate.classList.remove('text-white');
+            } else {
+                completionRate.classList.add('text-white');
+                completionRate.classList.remove('text-amber-400');
+            }
+        }
+    </script>
+</body>
+</html>
